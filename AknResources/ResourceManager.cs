@@ -35,7 +35,9 @@ namespace AknResources {
 
         public string GetLatestVersion(string server) {
             using var client = new AknWebClient(_config);
-            var json = client.DownloadString(Url(server, "version"));
+            var json = server == "cn" ?
+                client.DownloadString("https://ak-conf.hypergryph.com/config/prod/official/IOS/version") :
+                client.DownloadString(Url(server, "version"));
             var info = JsonSerializer.Deserialize<VersionInfo>(json, _jsonOptions);
 
             return info.ResVersion;
