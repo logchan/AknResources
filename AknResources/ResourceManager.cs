@@ -147,7 +147,14 @@ namespace AknResources {
                             count += 1;
                         }
 
-                        Log.Information($"[Worker {workerId}] Extract assets {count} / {total}");
+                        Log.Information($"[Worker {workerId}] Extract assets {count} / {total} ({fi.FullName.Substring(inputRoot.FullName.Length + 1)})");
+                        if (_config.Include.Count > 0 && !_config.Include.Any(inc => fi.FullName.Contains(inc))) {
+                            continue;
+                        }
+                        if (_config.Exclude.Count > 0 && _config.Exclude.Any(inc => fi.FullName.Contains(inc))) {
+                            continue;
+                        }
+
                         var outDir = Path.Combine(root, Path.GetDirectoryName(fi.FullName.Substring(inputRoot.FullName.Length + 1)) ?? String.Empty, fi.Name);
                         ExtractAssetBundle(server, fi.FullName, outDir);
                     }
