@@ -45,14 +45,34 @@ namespace AknResources {
 
         public void DownloadFiles(string server, string version) {
             var updateList = GetHotUpdateList(server, version);
-            var pending = updateList.AbInfos.Where(info => !File.Exists(GetRawFilePath(info.Md5))).ToList();
+            var pending = new Queue<HotUpdateList.AbInfo>(updateList.AbInfos.Where(info => !File.Exists(GetRawFilePath(info.Md5))));
+
+            var total = pending.Count;
             var count = 0;
-            foreach (var info in pending) {
-                count += 1;
-                Log.Information($"Download {count} / {pending.Count}: {info.Name}");
-                var name = HttpUtility.UrlEncode(info.Name.Replace("#", "__").Replace("/", "_").Replace(".ab", ".dat").Replace(".mp4", ".dat"));
-                DownloadOfficialResourceFile(server, version, name, GetRawFilePath(info.Md5));
+            var taskLock = new object();
+            var tasks = new Task[Math.Max(_config.Workers, 1)];
+            for (var i = 0; i < tasks.Length; ++i) {
+                var workerId = i + 1;
+                tasks[i] = Task.Run(() => {
+                    while (true) {
+                        HotUpdateList.AbInfo info;
+                        lock (taskLock) {
+                            if (pending.Count == 0) {
+                                break;
+                            }
+
+                            info = pending.Dequeue();
+                            count += 1;
+                        }
+
+                        Log.Information($"[Worker {workerId}] Download {count} / {total}: {info.Name}");
+                        var name = HttpUtility.UrlEncode(info.Name.Replace("#", "__").Replace("/", "_").Replace(".ab", ".dat").Replace(".mp4", ".dat"));
+                        DownloadOfficialResourceFile(server, version, name, GetRawFilePath(info.Md5));
+                    }
+                });
             }
+
+            Task.WaitAll(tasks);
         }
 
         public void ExtractFiles(string server, string version) {
