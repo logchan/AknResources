@@ -174,6 +174,9 @@ namespace AknResources {
                                 skip = true;
                                 action = "Skip";
                             }
+                            else {
+                                Directory.Delete(outDir, true);
+                            }
                         }
 
                         if (!skip || _config.VerboseExport) {
