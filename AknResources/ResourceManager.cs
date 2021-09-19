@@ -109,6 +109,10 @@ namespace AknResources {
         }
 
         public void ExtractAssets(string server) {
+            bool CheckIncludeCondition(string cond, string s) {
+                return cond[0] == '^' && cond.Length > 1 ? s.StartsWith(cond.Substring(1)) : s.Contains(cond);
+            }
+
             var root = Path.Combine(_root.FullName, server, "assets");
             Directory.CreateDirectory(root);
 
@@ -147,15 +151,40 @@ namespace AknResources {
                             count += 1;
                         }
 
-                        Log.Information($"[Worker {workerId}] Extract assets {count} / {total} ({fi.FullName.Substring(inputRoot.FullName.Length + 1)})");
-                        if (_config.Include.Count > 0 && !_config.Include.Any(inc => fi.FullName.Contains(inc))) {
-                            continue;
+                        var abPath = fi.FullName.Substring(inputRoot.FullName.Length + 1);
+                        var skip = false;
+                        var action = "Extract";
+
+                        // skip if include / exclude list in effect
+                        if (_config.Include.Count > 0 && !_config.Include.Any(cond => CheckIncludeCondition(cond, abPath))) {
+                            skip = true;
+                            action = "Exclude";
                         }
-                        if (_config.Exclude.Count > 0 && _config.Exclude.Any(inc => fi.FullName.Contains(inc))) {
+                        if (_config.Exclude.Count > 0 && _config.Exclude.Any(cond => CheckIncludeCondition(cond, abPath))) {
+                            skip = true;
+                            action = "Exclude";
+                        }
+
+                        // skip if not newer
+                        var outDir = Path.Combine(root, abPath);
+                        if (Directory.Exists(outDir)) {
+                            var dirTime = Directory.GetCreationTimeUtc(outDir);
+                            var abTime = File.GetLastWriteTimeUtc(fi.FullName);
+                            if (dirTime > abTime) {
+                                skip = true;
+                                action = "Skip";
+                            }
+                        }
+
+                        if (!skip || _config.VerboseExport) {
+                            Log.Information($"[Worker {workerId}] {action} {count} / {total} ({abPath})");
+                        }
+
+                        if (skip) {
                             continue;
                         }
 
-                        var outDir = Path.Combine(root, Path.GetDirectoryName(fi.FullName.Substring(inputRoot.FullName.Length + 1)) ?? String.Empty, fi.Name);
+                        Directory.CreateDirectory(outDir);
                         ExtractAssetBundle(server, fi.FullName, outDir);
                     }
                 });
