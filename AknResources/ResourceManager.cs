@@ -1,13 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Web;
 using AssetStudio;
 using Serilog;
+using ImageFormat = System.Drawing.Imaging.ImageFormat;
 
 namespace AknResources {
     internal class ResourceManager {
@@ -292,7 +296,6 @@ namespace AknResources {
                     continue;
                 }
 
-                ctx.NameOverride = Path.GetFileNameWithoutExtension(name);
                 ctx.ExtensionOverride = Path.GetExtension(name);
                 AssetHandler.TryExtractAsset(text, ctx);
                 ctx.NameOverride = null;
@@ -301,6 +304,61 @@ namespace AknResources {
 
             foreach (var obj in assetObjects.Where(o => !processed.Contains(o.m_PathID))) {
                 AssetHandler.TryExtractAsset(obj, ctx);
+            }
+
+            if (abPath.StartsWith("charpack")) {
+                PostProcessAlpha(Path.Combine(root, "Texture2D"));
+            }
+        }
+
+        private static void PostProcessAlpha(string root) {
+            if (!Directory.Exists(root)) {
+                return;
+            }
+
+            var files = Directory.GetFiles(root, "*[alpha].png");
+            foreach (var alphaFile in files) {
+                var name = Path.GetFileNameWithoutExtension(alphaFile);
+                name = name.Substring(0, name.Length - "[alpha]".Length);
+
+                var origFile = Path.Combine(root, name + ".png");
+                if (!File.Exists(origFile)) {
+                    continue;
+                }
+
+                Log.Information($"Merge {name}");
+                
+                var img = new Bitmap(new MemoryStream(File.ReadAllBytes(origFile)));
+                img.MakeTransparent();
+
+                var alpha = new Bitmap(new MemoryStream(File.ReadAllBytes(alphaFile)));
+
+                if (img.Width != alpha.Width || img.Height != alpha.Height) {
+                    Log.Warning($"Alpha image size mismatch: {alphaFile}, skip");
+                    continue;
+                }
+
+                var imgBits = img.LockBits(new Rectangle(0, 0, img.Width, img.Height), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                var imgData = new byte[Math.Abs(imgBits.Stride) * imgBits.Height];
+                Marshal.Copy(imgBits.Scan0, imgData, 0, imgData.Length);
+
+                var alphaBits = alpha.LockBits(new Rectangle(0, 0, alpha.Width, alpha.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                var alphaData = new byte[Math.Abs(alphaBits.Stride) * alphaBits.Height];
+                Marshal.Copy(alphaBits.Scan0, alphaData, 0, alphaData.Length);
+                alpha.UnlockBits(alphaBits);
+
+                for (var i = 0; i < imgData.Length; i += 4) {
+                    imgData[i+3] = alphaData[i];
+                }
+
+                Marshal.Copy(imgData, 0, imgBits.Scan0, imgData.Length);
+                img.UnlockBits(imgBits);
+
+                img.Save(origFile, ImageFormat.Png);
+                File.Delete(alphaFile);
+
+                img.Dispose();
+                alpha.Dispose();
             }
         }
 
