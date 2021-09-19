@@ -200,6 +200,10 @@ namespace AknResources {
                             continue;
                         }
 
+                        // this results in empty folders if no asset is extracted from the bundle,
+                        // but allows us to skip the bundle later
+                        Directory.CreateDirectory(outDir);
+
                         ExtractAssetBundle(server, fi.FullName, abPath, outDir);
                     }
                 });
