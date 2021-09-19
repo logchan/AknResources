@@ -25,6 +25,8 @@ namespace AknResources {
             PropertyNameCaseInsensitive = true,
         };
 
+        private static readonly string[] _processAlpha = {"charpack", "npcpack", "skinpack"};
+
         private readonly DirectoryInfo _root;
         private readonly Config _config;
 
@@ -306,7 +308,7 @@ namespace AknResources {
                 AssetHandler.TryExtractAsset(obj, ctx);
             }
 
-            if (abPath.StartsWith("charpack")) {
+            if (_processAlpha.Any(abPath.StartsWith)) {
                 PostProcessAlpha(Path.Combine(root, "Texture2D"));
             }
         }
@@ -329,8 +331,6 @@ namespace AknResources {
                 Log.Information($"Merge {name}");
                 
                 var img = new Bitmap(new MemoryStream(File.ReadAllBytes(origFile)));
-                img.MakeTransparent();
-
                 var alpha = new Bitmap(new MemoryStream(File.ReadAllBytes(alphaFile)));
 
                 if (img.Width != alpha.Width || img.Height != alpha.Height) {
@@ -348,7 +348,7 @@ namespace AknResources {
                 alpha.UnlockBits(alphaBits);
 
                 for (var i = 0; i < imgData.Length; i += 4) {
-                    imgData[i+3] = alphaData[i];
+                    imgData[i + 3] = alphaData[i];
                 }
 
                 Marshal.Copy(imgData, 0, imgBits.Scan0, imgData.Length);
