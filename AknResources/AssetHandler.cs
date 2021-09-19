@@ -5,6 +5,8 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using AssetStudio;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Bson;
 using Serilog;
 
 namespace AknResources {
@@ -132,11 +134,36 @@ namespace AknResources {
                 nameExt = isGameData && gameDataDir != "story" ? ".json" : ".txt";
             }
 
+            // new format
+            if (gameDataDir == "excel" && obj.m_Name != "data_version" && LooksLikeBsonData(data)) {
+                Log.Information($"Treat {name} as BSON");
+
+                using var ms = new MemoryStream(data);
+                using var reader = new BsonDataReader(ms);
+                var serializer = new JsonSerializer();
+                var bsonObj = serializer.Deserialize(reader);
+                
+                data = System.Text.Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(bsonObj, Formatting.Indented));
+            }
+
+            if (gameDataDir == "excel" && obj.m_Name == "data_version") {
+                nameExt = "";
+            }
+
             ctx.NameOverride = null;
             ctx.ExtensionOverride = null;
             var fullName = GetFullName(name, nameExt, ctx);
 
             File.WriteAllBytes(fullName, data);
+        }
+
+        private static bool LooksLikeBsonData(byte[] data) {
+            if (data.Length < 4) {
+                return false;
+            }
+
+            var length = data[0] + data[1] * (1 << 8) + data[2] * (1 << 16) + data[3] * (1 << 24);
+            return length == data.Length;
         }
 
         private static void HandleSprite(Sprite obj, HandlingContext ctx) {
