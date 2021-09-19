@@ -166,8 +166,15 @@ namespace AknResources {
                         }
 
                         // skip if not newer
-                        var outDir = Path.Combine(root, abPath);
-                        if (Directory.Exists(outDir)) {
+                        var outDir = Path.Combine(root, abPath.Substring(0, abPath.Length - 3)); // remove trailing .ab
+
+                        // special handling gamedata/excel
+                        var isExcel = abPath.StartsWith($"gamedata{Path.DirectorySeparatorChar}excel");
+                        if (isExcel) {
+                            outDir = outDir.Substring(0, outDir.LastIndexOf(Path.DirectorySeparatorChar));
+                        }
+
+                        if (!isExcel && Directory.Exists(outDir)) {
                             var dirTime = Directory.GetCreationTimeUtc(outDir);
                             var abTime = File.GetLastWriteTimeUtc(fi.FullName);
                             if (dirTime > abTime) {
@@ -187,8 +194,7 @@ namespace AknResources {
                             continue;
                         }
 
-                        Directory.CreateDirectory(outDir);
-                        ExtractAssetBundle(server, fi.FullName, outDir);
+                        ExtractAssetBundle(server, fi.FullName, abPath, outDir);
                     }
                 });
             }
@@ -196,11 +202,12 @@ namespace AknResources {
             Task.WaitAll(tasks);
         }
 
-        private void ExtractAssetBundle(string server, string bundlePath, string root) {
+        private void ExtractAssetBundle(string server, string bundlePath, string abPath, string root) {
             var manager = new AssetsManager();
             manager.LoadFiles(bundlePath);
-            var context = new AssetHandler.HandlingContext {
+            var ctx = new AssetHandler.HandlingContext {
                 BundleTime = File.GetLastWriteTimeUtc(bundlePath),
+                AbPath = abPath,
                 Directory = root,
                 DecryptKey = _config.DecryptKeys[server][0],
                 DecryptIvMask = _config.DecryptKeys[server][1],
@@ -208,8 +215,92 @@ namespace AknResources {
                 Verbose = _config.VerboseExport,
             };
 
-            foreach (var asset in manager.assetsFileList.SelectMany(assetsFile => assetsFile.Objects)) {
-                AssetHandler.TryExtractAsset(asset, context);
+            var assetObjects = manager.assetsFileList.SelectMany(assetsFile => assetsFile.Objects).ToList();
+            var containers = new Dictionary<long, string>();
+
+            foreach (var bundle in assetObjects.OfType<AssetBundle>()) {
+                foreach (var container in bundle.m_Container) {
+                    var start = container.Value.preloadIndex;
+                    var end = start + container.Value.preloadSize;
+                    
+                    for (var k = start; k < end; ++k)
+                    {
+                        containers[bundle.m_PreloadTable[k].m_PathID] = container.Key;
+                    }
+                }
+            }
+
+            foreach (var (k,  v) in assetObjects.OfType<AssetStudio.ResourceManager>().SelectMany(m => m.m_Container).Select(c => (c.Value, c.Key))) {
+                containers[k.m_PathID] = v;
+            }
+            
+            // special handling of sprites and textures
+
+            var processed = new HashSet<long>();
+            void ProcessImages<T>(IEnumerable<T> images, string folderName, Func<T, string> nameGetter) where T: AssetStudio.Object {
+                ctx.Directory = Path.Combine(root, folderName);
+
+                var nameUsers = new Dictionary<string, List<long>>();
+                var imagesDict = new Dictionary<long, T>();
+                foreach (var img in images) {
+                    var id = img.m_PathID;
+                    processed.Add(id);
+
+                    if (containers.TryGetValue(id, out var name) && Path.GetExtension(name) == ".png") {
+                        name = Path.GetFileNameWithoutExtension(name);
+                    }
+                    else {
+                        name = nameGetter(img);
+                    }
+
+                    if (!nameUsers.TryGetValue(name, out var users)) {
+                        users = new List<long>();
+                        nameUsers[name] = users;
+                    }
+                    users.Add(id);
+                    imagesDict[id] = img;
+                }
+
+                foreach (var name in nameUsers.Keys) {
+                    var users = nameUsers[name];
+                    if (users.Count == 1) {
+                        ctx.NameOverride = name;
+                        AssetHandler.TryExtractAsset(imagesDict[users[0]], ctx);
+                    }
+                    else {
+                        foreach (var user in users) {
+                            ctx.NameOverride = $"{name} [{user}]";
+                            AssetHandler.TryExtractAsset(imagesDict[user], ctx);
+                        }
+                    }
+                }
+
+                ctx.Directory = root;
+                ctx.NameOverride = null;
+            }
+            
+            ProcessImages(assetObjects.OfType<Sprite>(), "Sprite", s => s.m_Name);
+            ProcessImages(assetObjects.OfType<Texture2D>(), "Texture2D", s => s.m_Name);
+
+            // special handling of text
+
+            foreach (var text in assetObjects.OfType<TextAsset>()) {
+                var id = text.m_PathID;
+                processed.Add(id);
+
+                if (!containers.TryGetValue(id, out var name)) {
+                    continue;
+                }
+
+                ctx.NameOverride = Path.GetFileNameWithoutExtension(name);
+                ctx.ExtensionOverride = Path.GetExtension(name);
+                AssetHandler.TryExtractAsset(text, ctx);
+                ctx.NameOverride = null;
+                ctx.ExtensionOverride = null;
+            }
+
+            foreach (var obj in assetObjects.Where(o => !processed.Contains(o.m_PathID))) {
+                AssetHandler.TryExtractAsset(obj, ctx);
             }
         }
 

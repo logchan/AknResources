@@ -61,8 +61,13 @@ namespace AknResources {
             return true;
         }
 
+        private static string GetFullName(string name, string extension, HandlingContext ctx) {
+            Directory.CreateDirectory(ctx.Directory);
+            return Path.Combine(ctx.Directory, String.Concat(ctx.NameOverride ?? name, ctx.ExtensionOverride ?? extension));
+        }
+
         private static void HandleTexture2D(Texture2D obj, HandlingContext ctx) {
-            var fullName = Path.Combine(ctx.Directory, obj.m_Name + ".png");
+            var fullName = GetFullName(obj.m_Name, ".png", ctx);
 
             using var ms = obj.ConvertToStream(ImageFormat.Png, true);
             if (ms == null) {
@@ -77,7 +82,7 @@ namespace AknResources {
             var converter = new AudioClipConverter(obj);
             var convert = ctx.ConvertAudio && converter.IsSupport;
             var extension = convert ? ".wav" : converter.GetExtensionName();
-            var fullName = Path.Combine(ctx.Directory, obj.m_Name + extension);
+            var fullName = GetFullName(obj.m_Name, extension, ctx);
 
             byte[] data;
             if (convert) {
@@ -96,23 +101,39 @@ namespace AknResources {
             File.WriteAllBytes(fullName, data);
         }
 
-        private static readonly string[] _unencryptedGameData = {"story", "art.ab", "building.ab", "data_version.ab"};
         private static void HandleTextAsset(TextAsset obj, HandlingContext ctx) {
-            var fullName = Path.Combine(ctx.Directory, obj.m_Name + ".txt");
-
+            var fullName = GetFullName(obj.m_Name, ".txt", ctx);
             var data = obj.m_Script;
             var needDecrypt = ctx.DecryptKey != null && ctx.DecryptIvMask != null &&
-                              ctx.Directory.Contains("gamedata") &&
-                              _unencryptedGameData.All(name => !fullName.Contains(name + Path.DirectorySeparatorChar));
+                              ctx.AbPath.StartsWith("gamedata") &&
+                              ctx.ExtensionOverride == ".bytes";
+            var isExcel = ctx.AbPath.StartsWith($"gamedata{Path.DirectorySeparatorChar}excel");
 
             if (needDecrypt) {
-                ArkProtocol.TryDecrypt(ctx.DecryptKey, ctx.DecryptIvMask, data, 128, out data);
+                if (ArkProtocol.TryDecrypt(ctx.DecryptKey, ctx.DecryptIvMask, data, isExcel ? 128 : 0, out data)) {
+                    ctx.ExtensionOverride = Path.GetExtension(ctx.NameOverride) == String.Empty ? ".json" : null;
+                    fullName = GetFullName(obj.m_Name, ".txt", ctx);
+                }
             }
             File.WriteAllBytes(fullName, data);
         }
 
+        private static void HandleSprite(Sprite obj, HandlingContext ctx) {
+            var fullName = GetFullName(obj.m_Name, ".png", ctx);
+
+            using var ms = obj.GetImage(ImageFormat.Png);
+            if (ms == null) {
+                Log.Warning($"Failed to export: {fullName}");
+                return;
+            }
+            File.WriteAllBytes(fullName, ms.ToArray());
+        }
+
         public class HandlingContext {
             public string Directory { get; set; }
+            public string AbPath { get; set; }
+            public string NameOverride { get; set; }
+            public string ExtensionOverride { get; set; }
             public DateTime BundleTime { get; set; }
             public string DecryptKey { get; set; }
             public string DecryptIvMask { get; set; }

@@ -26,7 +26,7 @@ namespace AknResources {
                     keys.Add(null);
                 }
 
-                var version = manager.GetLatestVersion(server);
+                var version = config.Version ?? manager.GetLatestVersion(server);
                 Log.Information($"Latest version: {version}");
                 manager.DownloadFiles(server, version);
                 manager.ExtractFiles(server, version);
