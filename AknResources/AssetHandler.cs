@@ -101,20 +101,41 @@ namespace AknResources {
             File.WriteAllBytes(fullName, data);
         }
 
+        private static readonly Dictionary<string, int> _gameDataOffsets = new() {
+            ["[uc]lua.ab"] = 128,
+            ["excel"] = 128,
+            ["battle"] = 128,
+            ["buff_table"] = 128,
+        };
+
         private static void HandleTextAsset(TextAsset obj, HandlingContext ctx) {
-            var fullName = GetFullName(obj.m_Name, ".txt", ctx);
             var data = obj.m_Script;
-            var needDecrypt = ctx.DecryptKey != null && ctx.DecryptIvMask != null &&
-                              ctx.AbPath.StartsWith("gamedata") &&
+            var isGameData = ctx.AbPath.StartsWith("gamedata");
+            var needDecrypt = ctx.DecryptKey != null &&
+                              ctx.DecryptIvMask != null &&
+                              isGameData &&
                               ctx.ExtensionOverride == ".bytes";
-            var isExcel = ctx.AbPath.StartsWith($"gamedata{Path.DirectorySeparatorChar}excel");
+            var gameDataDir = isGameData ? ctx.AbPath.Split(Path.DirectorySeparatorChar)[1] : String.Empty;
 
             if (needDecrypt) {
-                if (ArkProtocol.TryDecrypt(ctx.DecryptKey, ctx.DecryptIvMask, data, isExcel ? 128 : 0, out data)) {
-                    ctx.ExtensionOverride = Path.GetExtension(ctx.NameOverride) == String.Empty ? ".json" : null;
-                    fullName = GetFullName(obj.m_Name, ".txt", ctx);
+                if (!_gameDataOffsets.TryGetValue(gameDataDir, out var offset)) {
+                    offset = 0;
                 }
+
+                ArkProtocol.TryDecrypt(ctx.DecryptKey, ctx.DecryptIvMask, data, offset, out data);
             }
+
+            // try to find the actual extension
+            var nameExt = Path.GetExtension(obj.m_Name);
+            var name = obj.m_Name.Substring(0, obj.m_Name.Length - nameExt.Length);
+            if (nameExt == String.Empty) {
+                nameExt = isGameData && gameDataDir != "story" ? ".json" : ".txt";
+            }
+
+            ctx.NameOverride = null;
+            ctx.ExtensionOverride = null;
+            var fullName = GetFullName(name, nameExt, ctx);
+
             File.WriteAllBytes(fullName, data);
         }
 
