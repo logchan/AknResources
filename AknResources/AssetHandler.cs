@@ -109,7 +109,7 @@ namespace AknResources {
             ["[uc]lua.ab"] = 128,
             ["excel"] = 128,
             ["battle"] = 128,
-            ["buff_table"] = 128,
+            ["buff_table.ab"] = 128,
         };
 
         private static void HandleTextAsset(TextAsset obj, HandlingContext ctx) {
