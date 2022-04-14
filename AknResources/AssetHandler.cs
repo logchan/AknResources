@@ -14,6 +14,8 @@ namespace AknResources {
         private static readonly Dictionary<Type, Action<AssetStudio.Object, HandlingContext>> _handlerFunctions =
             new();
 
+        private static readonly HashSet<string> _bsonExclusion = new HashSet<string> {"[uc]lua", "story"};
+
         public static void Initialize() {
             // Register all handlers
             var methods = typeof(AssetHandler).GetMethods(BindingFlags.Static | BindingFlags.NonPublic);
@@ -135,7 +137,7 @@ namespace AknResources {
             }
 
             // new format
-            if (gameDataDir == "excel" && obj.m_Name != "data_version" && LooksLikeBsonData(data)) {
+            if (!_bsonExclusion.Contains(gameDataDir) && obj.m_Name != "data_version" && LooksLikeBsonData(data)) {
                 Log.Information($"Treat {name} as BSON");
 
                 using var ms = new MemoryStream(data);
