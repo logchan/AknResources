@@ -22,6 +22,16 @@ namespace AknResources {
                     config.DecryptKeys[server] = keys;
                 }
 
+                if (!config.Include.TryGetValue(server, out var list)) {
+                    list = new List<string>();
+                    config.Include[server] = list;
+                }
+
+                if (!config.Exclude.TryGetValue(server, out list)) {
+                    list = new List<string>();
+                    config.Exclude[server] = list;
+                }
+
                 while (keys.Count < 2) {
                     keys.Add(null);
                 }

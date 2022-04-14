@@ -81,16 +81,29 @@ namespace AknResources {
             Task.WaitAll(tasks);
         }
 
+        private static bool CheckIncludeCondition(string cond, string s) {
+            return cond[0] == '^' && cond.Length > 1 ? s.StartsWith(cond.Substring(1)) : s.Contains(cond);
+        }
+
         public void ExtractFiles(string server, string version) {
             var updateList = GetHotUpdateList(server, version);
             var root = Path.Combine(_root.FullName, server, "bundles");
             Directory.CreateDirectory(root);
 
             var count = 0;
+            var includeList = _config.Include[server];
+            var excludeList = _config.Exclude[server];
             foreach (var info in updateList.AbInfos) {
                 count += 1;
                 var rawFile = GetRawFilePath(info.Md5);
                 if (!File.Exists(rawFile)) {
+                    continue;
+                }
+
+                if (includeList.Count > 0 && !includeList.Any(cond => CheckIncludeCondition(cond, info.Name))) {
+                    continue;
+                }
+                if (excludeList.Count > 0 && excludeList.Any(cond => CheckIncludeCondition(cond, info.Name))) {
                     continue;
                 }
 
@@ -115,10 +128,6 @@ namespace AknResources {
         }
 
         public void ExtractAssets(string server) {
-            bool CheckIncludeCondition(string cond, string s) {
-                return cond[0] == '^' && cond.Length > 1 ? s.StartsWith(cond.Substring(1)) : s.Contains(cond);
-            }
-
             var root = Path.Combine(_root.FullName, server, "assets");
             Directory.CreateDirectory(root);
 
@@ -143,6 +152,8 @@ namespace AknResources {
             var count = 0;
             var taskLock = new object();
             var tasks = new Task[Math.Max(_config.Workers, 1)];
+            var includeList = _config.Include[server];
+            var excludeList = _config.Exclude[server];
             for (var i = 0; i < tasks.Length; ++i) {
                 var workerId = i + 1;
                 tasks[i] = Task.Run(() => {
@@ -162,11 +173,11 @@ namespace AknResources {
                         var action = "Extract";
 
                         // skip if include / exclude list in effect
-                        if (_config.Include.Count > 0 && !_config.Include.Any(cond => CheckIncludeCondition(cond, abPath))) {
+                        if (includeList.Count > 0 && !includeList.Any(cond => CheckIncludeCondition(cond, abPath))) {
                             skip = true;
                             action = "Exclude";
                         }
-                        if (_config.Exclude.Count > 0 && _config.Exclude.Any(cond => CheckIncludeCondition(cond, abPath))) {
+                        if (excludeList.Count > 0 && excludeList.Any(cond => CheckIncludeCondition(cond, abPath))) {
                             skip = true;
                             action = "Exclude";
                         }

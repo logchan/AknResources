@@ -12,7 +12,7 @@ namespace AknResources {
         public bool ConvertAudio { get; set; } = false;
         public int Workers { get; set; } = 8;
         public bool VerboseExport { get; set; } = false;
-        public List<string> Include { get; set; } = new();
-        public List<string> Exclude { get; set; } = new();
+        public Dictionary<string, List<string>> Include { get; set; } = new();
+        public Dictionary<string, List<string>> Exclude { get; set; } = new();
     }
 }
